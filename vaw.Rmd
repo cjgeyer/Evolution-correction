@@ -1,0 +1,1085 @@
+---
+title: "Correction for @kulbaba-et-al"
+author:
+  - "Charles J. Geyer^[School of Statistics, University of Minnesota, geyer@umn.edu, https://orcid.org/0000-0003-1471-1703]"
+  - "Mason W. Kulbaba^[Department of Mathematics and Science, Our Lady of the Lake University, mkulbaba@ollusa.edu, https://orcid.org/0000-0003-0619-7089]"
+  - "Seema N. Sheth^[Department of Plant and Microbial Biology, North Carolina State University, https://orcid.org/0000-0001-8284-7608]"
+  - "Rachel E. Pain^[Ecology, Evolution and Behavior Graduate Program, University of Minnesota, repain@umn.edu]"
+  - "Vincent M. Eckhart^[Department of Biology, Grinnell College, eckhart@grinnell.edu]"
+  - "Ruth G. Shaw^[Department of Ecology, Evolution and Behavior, University of Minnesota, shawx016@umn.edu, https://orcid.org/0000-0001-5980-9291]"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  bookdown::pdf_document2:
+    extra_dependencies: "amscd"
+    number_sections: true
+    toc: true
+    toc_depth: 3
+linkcolor: blue
+urlcolor: blue
+bibliography: foo.bib
+csl: journal-of-the-royal-statistical-society.csl
+link-citations: true
+---
+
+<!--
+-->
+
+# Abstract
+
+In our paper, @kulbaba-et-al,
+we used aster analyses of records of components of fitness for three populations of *Chamaecrista fasciculata*, 
+each grown in its home location in three years. It is not feasible to obtain every fruit before it dehisces and releases its seeds. 
+For this reason and also because, in this and many other species, fruits may be numerous, it is common practice to obtain seed counts 
+from a subset of fruits. Aster methodology can account for such subsampling of a fitness node, and our aster models did so. 
+The error arose in the process of obtaining estimates of mean fitness and additive genetic variance for fitness. 
+Specifically, the proportion of fruits sampled to obtain seed counts was correctly included in the aster models,
+but the code to obtain estimates from these models did not account for the subsampling to scale up to the total number of seeds individuals produced. 
+This document presents reanalyses correcting this error by implementing calculations described by @aster2, Section 8
+of @tr661, and the Supplementary Material of @stanton-geddes-tiffin-shaw.
+Our reanalysis shows that the error did not affect the major qualitative conclusions, though numerical values differ.
+Unrelated to the matter of subsampling, we here also shift from treating "block" as a fixed factor to treating it as random. Either choice is
+justifiable; particularly because of the nonlinearity of parameterizations of generalized linear models and aster models, the choice to treat blocks as
+random simplifies interpretation.
+
+# License
+
+This work is licensed under a Creative Commons
+CC0 1.0 Universal (CC0 1.0) Public Domain Dedication
+(https://creativecommons.org/publicdomain/zero/1.0/).
+
+# R
+
+ * The version of R used to make this document is `r getRversion()`.
+
+ * The version of the `rmarkdown` package used to make this document is
+   `r packageVersion("rmarkdown")`.
+
+ * The version of the `bookdown` package used to make this document is
+   `r packageVersion("bookdown")`.
+
+ * The version of the `aster` package used to make this document is
+   `r packageVersion("aster")`.
+
+ * The version of the `numDeriv` package used to make this document is
+   `r packageVersion("numDeriv")`.
+
+ * The version of the `kableExtra` package used to make this document is
+   `r packageVersion("kableExtra")`.
+
+As far as we know, any fairly recent version of R or these packages
+will do for processing this Rmarkdown document.  We are not using
+cutting edge features.
+
+Attach packages.
+```{r package}
+library("aster")
+library("numDeriv")
+library("kableExtra")
+```
+
+# Data
+
+Get data (if not done already).
+```{r down}
+prefix <- c("gc", "kw", "cs")
+for (p in prefix) {
+    f <- paste0(p, "data.csv")
+    u <- paste0("https://raw.githubusercontent.com/mason-kulbaba/",
+        "adaptive-capacity/master/VaW_W_analyses/", toupper(p), "/", f)
+    if (! file.exists(f))
+        download.file(u, f)
+}
+```
+
+# Introduction
+
+We do aster (@aster2, @reaster) analyses for an aster model with graph
+$$
+\begin{CD}
+  1 @>\text{Ber}>> \texttt{Germ}
+  @>\text{Ber}>> \texttt{flw}
+  @>\text{Poi}>> \texttt{total.pods}
+  @>\text{samp}>> \texttt{total.pods.collected}
+  @>\text{Poi}>> \texttt{totalseeds}
+\end{CD}
+$$
+where the variables are
+
+ * `Germ` is germination indicator (0 = no, 1 = yes), conditionally Bernoulli.
+
+ * `flw` is survival to flowering (0 = no, 1 = yes),
+    conditionally Bernoulli.
+
+ * `total.pods` is total number of pods produced,
+   conditionally Poisson.
+
+ * `total.pods.collected` is number of pods collected,
+   conditionally Bernoulli (i.e. each pod may be collected or not).  The arrow leading to this node
+   is a subsampling arrow.  The number of pods collected is
+   a random sample of the pods produced.
+
+ * `totalseeds` is total number of seeds counted from collected pods,
+   conditionally Poisson.
+
+Set graphical model description in R.
+```{r graph}
+vars <- c("Germ", "flw", "total.pods", "total.pods.collected", "totalseeds")
+pred <- c(0, 1, 2, 3, 4)
+fam <- c(1, 1, 2, 1, 2)
+```
+
+# Example Analysis
+
+## Determine Data to Analyze
+
+We start by doing one example, but we do it in such a way that code
+can be reused for all analyses.  The following two variables determine
+(entirely) the analysis to be done.
+```{r mydata.myyear}
+mydata <- "gcdata.csv"
+myyear <- 2015
+```
+
+## Read Data
+
+Read in data.
+```{r read}
+dat <- read.csv(mydata)
+```
+
+## Remove Parental ID Zero
+
+Parental ID Zero is apparently "unknown" and hence should be removed
+from these analyses.
+```{r remove}
+zeros <- dat$paternalID == 0 | dat$maternalID == 0
+dat <- dat[! zeros, ]
+```
+
+## Make Factor Variables
+
+Show types of variables.
+```{r types}
+sapply(dat, class)
+```
+Some of these variables need to be `factor`.
+```{r factor}
+dat <- transform(dat,
+    maternalID = as.factor(maternalID),
+    paternalID = as.factor(paternalID),
+    block = as.factor(block))
+```
+
+## Fix Data
+
+Check subsampling is correct, i.e. that the number of pods sampled from a given plant is not greater than the total number of pods it was recorded to
+have produced.
+```{r oopsie}
+oopsie <- with(dat, total.pods.collected > total.pods)
+```
+The following should say `FALSE`.
+```{r oopsie.show}
+any(oopsie)
+```
+
+For this example, there is a problem to fix.
+```{r subsamp.too}
+if (any(oopsie))
+    dat[oopsie, ]
+```
+
+So this data error has to be corrected: we assume
+`total.pods` is correct and equal to `total.pods.collected`
+for these rows of the data.
+```{r subsamp.fix}
+if (any(oopsie))
+    dat[oopsie, "total.pods.collected"] <- dat[oopsie, "total.pods"]
+```
+
+## Subset Data
+
+Subset the data to get one part we want to analyze separately.
+Other parts are analyzed in the same way.
+Divide into year-specific files.
+```{r data.too}
+subdat <- subset(dat, year == myyear & cohort == "greenhouse")
+```
+Show that we did the subset correctly.
+```{r data.too.show}
+unique(subdat$year)
+```
+Drop unused levels.
+```{r data.too.too}
+subdat <- droplevels(subdat)
+```
+
+## Reshape Data
+
+Reshape data the way R function `aster` wants it.
+```{r reshape}
+redata <- reshape(subdat, varying = list(vars), direction = "long",
+    timevar = "varb", times = as.factor(vars), v.names = "resp")
+```
+
+Add indicator variable `fit` to indicate "fitness" nodes (in these data
+just one node).  Also add `root` (in these data always equal to 1).
+```{r fit}
+redata <- transform(redata,
+    fit = as.numeric(grepl("totalseeds", as.character(varb))),
+    root = 1)
+```
+
+## Random Effect Aster Model
+
+In our preliminary analyses that modeled sire and dam effects separately, we found their components of variance to be comparable in magnitude. This is
+evidence that there are negligible contributions of dominance and maternal effects to resemblance of sibs. It is thus valid to estimate a single common
+variance for the nuclear genetic contributions of sires and of dams to offspring fitness. 
+In order to have the same variance for the random effects for sires and dams we do the following.
+```{r random.effect}
+modmat.sire <- model.matrix(~ 0 + fit:paternalID, redata)
+modmat.dam <- model.matrix(~ 0 + fit:maternalID, redata)
+head(colnames(modmat.sire))
+head(colnames(modmat.dam))
+modmat.siredam <- cbind(modmat.sire, modmat.dam)
+```
+
+```{r key.gc, echo=FALSE}
+key <- tools::md5sum(mydata)
+```
+Then we can fit the model.
+```{r random.effect.too, cache=TRUE, cache.extra=key}
+rout <- reaster(resp ~ fit + varb,
+    list(parental=~0 + modmat.siredam, block = ~ 0 + fit:block),
+    pred, fam, varb, id, root, data = redata)
+```
+And show the results.
+```{r random.effect.show, cache=TRUE, dependson="random.effect.too"}
+summary(rout)
+```
+
+# Fit More Models for Same Data
+
+The first thing we need to do is save our model fit so we do not clobber
+it with a new model fit.  First make an empty list.
+```{r fit.save.zero}
+save.rout <- list()
+```
+Then save the fit we have.
+```{r fit.save.one, cache=TRUE, dependson="random.effect.too"}
+site.name <- substr(mydata, 1, 2)
+fit.name <- paste0(site.name, myyear)
+fit.name
+save.rout[[fit.name]] <- rout
+```
+
+Now we need to put stuff done above in a loop.  In the chunk below, we reuse
+multiple code chunks above (this is not visible in the PDF output, you must
+look at the Rmd source file).
+```{r fit.some.more, cache=TRUE, cache.extra=key, error=TRUE}
+for (myyear in 2016:2017) {
+<<data.too>>
+<<data.too.too>>
+<<reshape>>
+<<fit>>
+<<random.effect>>
+<<random.effect.too>>
+<<fit.save.one>>
+}
+```
+
+What have we got?
+```{r show.save.rout}
+names(save.rout)
+```
+
+# Fit More Models for Different Data
+
+Now that we have an analysis for one of the populations in a single year, we are ready to carry out the same analysis for the remaining cases to
+obtain results for all three populations in each of three years. we need to analyze the data in the following files.
+```{r more.data}
+more.data <- c("kwdata.csv", "csdata.csv")
+```
+```{r key.kw.cs, echo=FALSE}
+key <- lapply(more.data, tools::md5sum)
+```
+
+Now we need to do the same thing as in the preceding section, except
+more complicated because we need to wrap that in a loop that reads
+data from those files.
+```{r fit.even.more, cache=TRUE, cache.extra=key, error=TRUE}
+for (mydata in more.data) {
+<<read>>
+<<remove>>
+<<factor>>
+<<oopsie>>
+<<subsamp.fix>>
+for (myyear in 2015:2017) {
+<<data.too>>
+<<data.too.too>>
+<<reshape>>
+<<fit>>
+<<random.effect>>
+<<random.effect.too>>
+<<fit.save.one>>
+}
+}
+```
+
+# Function to Map from Canonical to Mean Value Parameter
+
+As with generalized linear models, aster models are linear on
+a scale (the canonical parameter scale) that is a nonlinear transformation from the scale of biological measurement.
+To complete our analysis, we convert our estimates from the canonical parameter scale
+back to the measurement scale (the mean value parameter scale).
+We use the map factory concept (use a function to make another function).
+This provides many benefits over defining the function we want directly.
+It allows us to embed information in the function we make with the factory.
+It allows us to easily remake the function whenever we need it.
+And the latter is important, because the map from the canonical parameter
+scale to the mean value parameter scale depends on the data we have fit.
+In particular, and in contrast to standard linear models, estimates of
+variance components here depend on the fixed effects.
+```{r factory}
+map.factory <- function(rout, is.subsamp) {
+    stopifnot(inherits(rout, "reaster"))
+    stopifnot(is.logical(is.subsamp))
+    aout <- rout$obj
+    stopifnot(inherits(aout, "aster"))
+    nnode <- ncol(aout$x)
+    if(nnode != length(is.subsamp))
+        stop("length(is.subsamp) not the number of nodes in the aster graph")
+    alpha <- rout$alpha
+    ifit <- which(names(alpha) == "fit")
+    if (length(ifit) != 1)
+        stop("no fixed effect named fit")
+    # return map function
+    function (b) {
+        stopifnot(is.numeric(b))
+        stopifnot(is.finite(b))
+        stopifnot(length(b) == 1)
+        alpha[ifit] <- alpha[ifit] + b
+        xi <- predict(aout, newcoef = alpha,
+            model.type = "conditional", is.always.parameter = TRUE)
+        xi <- matrix(xi, ncol = nnode)
+        # always use drop = FALSE unless you are sure you don't want that
+        # here if we omit drop = FALSE and there is only one non-subsampling
+        # node, the code will break (apply will give an error)
+        xi <- xi[ , ! is.subsamp, drop = FALSE]
+        mu <- apply(xi, 1, prod)
+        # mu is unconditional mean values for model without subsampling
+        # in this application all components mu are the same because no
+        # covariates except varb, so just return only one
+        mu[1]
+    }
+}
+```
+Here R function `map.factory` when invoked returns a function that maps
+from a possible value of a parental effect on the canonical parameter scale
+(what the model has) to the corresponding value on the mean value parameter
+scale.  This depends on the model and the fixed effect parameters,
+which are taken from argument `rout`, and it corrects for subsampling,
+which is indicated by the argument `is.subsamp`.
+The specific line of code that corrects for subsampling is
+```
+xi <- xi[ , ! is.subsamp, drop = FALSE]
+```
+This makes the result a function of conditional means of non-subsampling
+arrows only.
+
+Note that we are ignoring blocks.  This is the same as setting the block
+effect to zero.  This is not the actual effect of any actual block. Rather, it
+is something like the population mean of the population of blocks. 
+Specifically, we are setting the block effect to be the mean of the
+distribution that the model says block effects have (mean zero normal).
+We acknowledge that the blocks are not a simple random sample
+of some population of blocks, but this is not necessary for a random
+effects model to be appropriate.  We are using a model with block as a
+random effect merely to simplify interpretation: otherwise we would have different
+estimates for each block. The use of the correction for subsampling does not
+depend on the decision of whether to treat blocks as fixed or random.
+
+**Caution:** this function does not handle the case where more than one node
+of the graph contributes to `fit` nor does it check.  It assumes we have
+a linear graph, which we do.
+```{r check.linear}
+identical(pred, seq(along = pred) - 1)
+```
+If we did not have a linear graph, then correction for subsampling would
+be much more complicated
+([appendix on that below](#appendix-mean-values-corrected-for-subsampling))
+
+Invoke the function to construct an R function `map` that maps from
+canonical to mean value parameter values for these data.
+Also vectorize this function, which is useful in certain contexts.
+```{r map}
+map <- map.factory(rout, vars == "total.pods.collected")
+
+mapv <- Vectorize(map)
+```
+
+<!--
+Apparently if there are any special characters in the label, the figure
+tag gets wrongly printed.  So use camelCase for labels of figure chunks.
+-->
+Plot this function.
+```{r mapGraph,fig.align="center",fig.cap="Map from parental random effect on the canonical parameter scale to the mean value parameter scale."}
+sigma.hat <- rout$sigma["parental"]
+curve(mapv, from = -3 * sigma.hat, to = 3 * sigma.hat, log = "y")
+```
+
+We digress to note that this map indicates a very large range of fitness
+on the mean value parameter scale (Fig. \@ref(fig:mapGraph)). This may seem
+surprising, but it results from the nonlinearity of the relationship between
+the canonical parameter scale and the mean value parameter scale and 
+follows the conventional logic of generalized linear mixed models (GLMM)
+[@stiratelli-laird-ware] or aster models with random effects [@reaster].
+Admittedly, three standard deviations is a fairly extreme value for a normal
+random variable (happens with probability `r 2 * pnorm(-3)`).  Similar issues affect
+all GLMM and aster models with random effects.
+
+# Distribution of Breeding Value Estimates
+
+R function `reaster` provides estimates of the "breeding values"
+(in scare quotes) on the
+canonical parameter scale.  Of course, these are not precisely estimates,
+because breeding values are random effects rather than unknown parameters.
+So they are more analogous to BLUPS (best linear unbiased predictors) of breeding values in conventional
+quantitative genetics.  Except they are not really that either due to the
+nonlinearity of the mapping from canonical to mean values shown above.
+If we replace BLUP by best median unbiased, then maybe we have some sort
+of analogy (because medians map to medians going through any monotone
+transformation).
+
+Regardless, we map these quantities to the mean value parameter scale.
+Actually, rather than map all of the breeding values, we map a density
+estimate.  We do this just for sire breeding values.
+```{r sire.breeding}
+b <- rout$b
+head(names(b))
+idx <- grep("paternal", names(b))
+b <- b[idx]
+```
+Fix up names so not so verbose.
+```{r fixnames}
+names(b) <- sub("modmat.siredamfit:", "", names(b))
+```
+
+Now a density plot.
+```{r densityCanonicalFoo}
+foo <- density(b, bw = "SJ")
+```
+```{r densityCanonical,fig.align="center",fig.cap="Density of estimated \"breeding values\" on the canonical parameter scale."}
+plot(foo, main = "", xlab = "b")
+```
+
+To move this density through a nonlinear one-to-one mapping, one must
+multiply by the derivative of the inverse mapping, which, by
+the inverse function theorem, is the same as
+dividing by the derivative of the mapping.
+```{r density.mean.value.setup, cache=TRUE, dependson="random.effect.too"}
+bar <- foo
+bar$x <- mapv(foo$x)
+bar$y <- foo$y / grad(mapv, foo$x)
+```
+```{r densityMeanValue,fig.align="center",fig.cap="Density of estimated \"breeding values\" on the mean value parameter scale."}
+plot(bar, main = "", xlab = "map(b)")
+```
+
+# Distribution of Breeding Values for All Analyses
+
+Now we repeat the process in the preceding section for all subsets of
+the data, except we stop before making the plots.
+```{r breeding.all, cache=TRUE, dependson=c("fit.save.one","fit.some.more","fit.even.more")}
+fred <- function(rout) {
+<<map>>
+<<sire.breeding>>
+<<fixnames>>
+<<densityCanonicalFoo>>
+<<density.mean.value.setup>>
+return(bar)
+}
+
+density.all <- lapply(save.rout, fred)
+```
+
+Now we want to redo Figure 2 in @kulbaba-et-al. to present estimates of the distributions of breeding values for each population-year combination.
+We want three plots, one for each site, and three curves on each plot,
+one for each year.   And in order to use base R graphics, we need to find
+the maximum `x` value for each plot.  Or perhaps the minimum `x` value
+such that the `y` value is below a specified cutoff above that `x`.
+And the cutoff should probably depend on the maximum `y` value, so find
+that first.
+```{r max.y}
+foo <- sapply(density.all, function(o) max(o$y))
+ymax <- max(foo)
+cutoff <- ymax / 100
+foo <- sapply(density.all, function(o) max(o$x[o$y > cutoff]))
+xmax <- max(foo)
+```
+
+Now we need to make the three plots (combined into one plot).
+```{r densities,error=TRUE,fig.align="center",fig.cap="Density estimates of breeding values on mean value parameter scale."}
+par(mar = c(5, 4, 4, 0) + 0.1, mfrow = c(1, 3))
+plot(density.all[[1]], xlab = "breeding value (seed set)",
+    xlim = c(0, xmax), ylim = c(0, ymax), main = "")
+title(main = "Grey Cloud")
+lines(density.all[[2]], col = "red")
+lines(density.all[[3]], col = "blue")
+legend(list(x = 4, y = 1.55), legend = as.character(2015:2017),
+    lty = 1, col = c("black", "red", "blue"))
+plot(density.all[[4]], xlab = "breeding value (seed set)",
+    xlim = c(0, xmax), ylim = c(0, ymax), main = "")
+title(main = "McCarthy Lake")
+lines(density.all[[5]], col = "red")
+lines(density.all[[6]], col = "blue")
+legend(list(x = 4, y = 1.55), legend = as.character(2015:2017),
+    lty = 1, col = c("black", "red", "blue"))
+plot(density.all[[7]], xlab = "breeding value (seed set)",
+    xlim = c(0, xmax), ylim = c(0, ymax), main = "")
+title(main = "CERA")
+lines(density.all[[8]], col = "red")
+lines(density.all[[9]], col = "blue")
+legend(list(x = 4, y = 1.55), legend = as.character(2015:2017),
+    lty = 1, col = c("black", "red", "blue"))
+```
+
+# Fisher's Fundamental Theorem of Natural Selection
+
+## Estimates Example
+
+Here we calculate mean fitness, additive genetic variance for fitness,
+and their ratio, which Fisher's fundamental theorem of natural selection
+(FFTNS)
+says predicts the per generation genetically based change in mean fitness due to natural selection.
+
+For this, following @tr696 we estimate mean fitness as
+```{r mean.fitness}
+mf <- map(0)
+mf
+```
+and additive genetic variance for fitness as
+```{r vaw}
+vaw <- rout$sigma["parental"]^2 * grad(map, 0)^2
+# get rid of name
+vaw <- as.numeric(vaw)
+vaw
+```
+This is sire variance mapped to the mean value parameter scale.
+
+In classical quantitative genetics the additive genetic variance is
+four times the contribution to it from sires, (@falconer-mackay, Chapter 9)
+and although it is unclear this applies outside of the classical models
+that assume the trait has a normal distribution (which we are not
+assuming here, instead using an aster model), we follow @tr696 in
+multiplying by 4.
+```{r vaw.four}
+vaw <- vaw * 4
+vaw
+```
+
+And now the Fisher's fundamental theorem calculation is
+```{r fftns}
+fftns <- vaw / mf
+fftns
+```
+
+## Estimates for All Subsets of the Data
+
+```{r fftns.redo}
+fran <- function(rout) {
+<<map>>
+<<mean.fitness>>
+<<vaw>>
+<<vaw.four>>
+<<fftns>>
+return(list(mf = mf, vaw = vaw, fftns = fftns))
+}
+
+save.fftns <- lapply(save.rout, fran)
+```
+
+We now have, for all nine cases, all three quantities (mean fitness, additive genetic variance
+for fitness, and the FFTNS prediction (their ratio)) saved. We present them in Table 1, below, once we
+obtain standard errors.
+
+## Standard Errors Example
+
+### Fisher Information
+
+We are going to do standard errors via the delta method.  For that
+we need derivatives, which we will again do using R package `numDeriv`.
+We also need Fisher information.  We get an approximation for that from
+the method of R generic function `summary` for objects of class `reaster`
+which is also called `summary.reaster`
+```{r create.summary}
+sout <- summary(rout)
+```
+```{r show.summary}
+names(sout)
+length(rout$alpha)
+length(rout$nu)
+dim(sout$fisher)
+```
+
+The value returned by `summary.reaster` is not documented.  To understand
+that we have to [Use the Source, Luke](http://catb.org/jargon/html/U/UTSL.html)
+from which (not shown, but as for all R code, the source is right there,
+just type `summary.reaster` to see it, after `library(aster)` has been done)
+we see that
+
+ * component `fisher` of the result is indeed treated like the Fisher
+   information matrix (it is just an approximation, not exact) which
+   needs to be inverted to get the (approximate) asymptotic variance of the
+   (approximate) maximum likelihood estimates (MLE) of the parameters,
+
+ * the parameters are the fixed effects `alpha` and the variance components
+   `nu`, and
+
+ * the fixed effect parameters come first in the parameter vector and the
+   variance components come last, that is `fisher` is the Fisher information
+   matrix for the parameter `c(alpha, nu)`.
+
+Then we get inverse Fisher information
+```{r inverse.fisher}
+fishinv <- solve(sout$fisher)
+```
+
+### Fisher's Fundamental Theorem Prediction
+
+We need paper-and-pencil expressions for the derivatives of FFTNS
+prediction (as we shall see, we cannot use R function `grad` for this).
+\begin{align*}
+   \frac{\partial}{\partial \alpha}
+   \frac{V_A(W)}{\mu}
+   & =
+   \frac{\partial}{\partial \alpha}
+   4 \mu^{-1} \nu
+   \left[ \left( \frac{\partial \mu}{\partial b} \right)_{b = 0} \right]^2
+   \\
+   & =
+   - 4 \mu^{-2} \frac{\partial \mu}{\partial \alpha} \nu 
+   \left[ \left( \frac{\partial \mu}{\partial b} \right)_{b = 0} \right]^2
+   + 8 \mu^{-1} \nu
+   \left( \frac{\partial^2 \mu}{\partial b \partial \alpha} \right)_{b = 0}
+   \\
+   \frac{\partial}{\partial \nu}
+   \frac{V_A(W)}{\mu}
+   & =
+   \frac{\partial}{\partial \nu}
+   4 \mu^{-1} \nu
+   \left[ \left( \frac{\partial \mu}{\partial b} \right)_{b = 0} \right]^2
+   \\
+   & =
+   4 \mu^{-1}
+   \left[ \left( \frac{\partial \mu}{\partial b} \right)_{b = 0} \right]^2
+\end{align*}
+where
+
+  *
+$$
+   V_A(W)
+   =
+   4 \nu \left[ \left( \frac{\partial \mu}{\partial b} \right)_{b = 0} \right]^2
+$$
+
+ * $\mu$ is (predicted) mean fitness, what was `map(0)` before,
+
+ * $b$ is the "breeding value (in scare quotes) on the canonical parameter
+   scale, what was the argument of R function `map` before,
+
+ * $\alpha$ is the vector of fixed effects (`rout$alpha`),
+
+ * $\nu$ is the parental variance component (`rout$nu[1]` because we
+   made that the first variance component, the second variance component
+   being the one for blocks), and
+
+    - $\partial \mu / \partial b$ is a scalar because $b$ is a scalar,
+
+    - $\partial \mu / \partial \alpha$ is a vector because $\alpha$ is
+      a vector, and
+
+    - $\partial^2 \mu / \partial b \partial \alpha$ is a vector because
+      $b$ is a scalar and $\alpha$ is a vector.
+
+We see that we need first derivatives of (predicted) mean fitness with respect
+to both breeding value ($\partial \mu / \partial b$) and fixed effects
+($\partial \mu / \partial \alpha$) and need (mixed) second derivatives with 
+respect to both of these ($\partial^2 \mu / \partial b \partial \alpha$).
+
+We could try to calculate second derivatives by applying R function `grad`
+in R package `numDeriv` twice, the second time to the result of calling
+it the first time, but this will not work well.  R function `grad` expects
+a differentiable function that is as continuous as it can be given the
+inaccuracy of computer arithmetic.  But R function `grad` does not return
+such.  Instead we use R function `hessian` in R package `numDeriv` which
+is designed to calculate second derivatives.  It does more than we want,
+but it does do what we want.
+
+In order to be able to differentiate with respect to both $b$ and
+$\alpha$ we need to rewrite R function `map` to be a function of both.
+But it cannot be a function of two arguments (not what R function `grad`
+expects) so we make it a function of one vector `balpha` that combines
+both.
+```{r factory.too}
+map.factory.too <- function(rout, is.subsamp) {
+    stopifnot(inherits(rout, "reaster"))
+    stopifnot(is.logical(is.subsamp))
+    aout <- rout$obj
+    stopifnot(inherits(aout, "aster"))
+    nnode <- ncol(aout$x)
+    if(nnode != length(is.subsamp))
+        stop("length(is.subsamp) not the number of nodes in the aster graph")
+    alpha <- rout$alpha
+    ifit <- which(names(alpha) == "fit")
+    if (length(ifit) != 1)
+        stop("no fixed effect named fit")
+    # return map function
+    function (balpha) {
+        stopifnot(is.numeric(balpha))
+        stopifnot(is.finite(balpha))
+        stopifnot(length(balpha) == 1 + length(alpha))
+        b <- balpha[1]
+        alpha <- balpha[-1]
+        alpha[ifit] <- alpha[ifit] + b
+        xi <- predict(aout, newcoef = alpha,
+            model.type = "conditional", is.always.parameter = TRUE)
+        xi <- matrix(xi, ncol = nnode)
+        # always use drop = FALSE unless you are sure you don't want that
+        # here if we omit drop = FALSE and there is only one non-subsampling
+        # node, the code will break (apply will give an error)
+        xi <- xi[ , ! is.subsamp, drop = FALSE]
+        mu <- apply(xi, 1, prod)
+        # mu is unconditional mean values for model without subsampling
+        # in this application all components mu are the same because no
+        # covariates except varb, so just return only one
+        mu[1]
+    }
+}
+```
+
+And then make the function by invoking the factory function.
+```{r map.too}
+map.too <- map.factory.too(rout, vars == "total.pods.collected")
+```
+
+And then the point where we want to evaluate it.
+```{r balpha.hat}
+balpha.hat <- c(0, rout$alpha)
+```
+
+And then check that the value of the function is what it is supposed to be.
+```{r check.too}
+all.equal(map(0), map.too(balpha.hat))
+```
+
+So now we calculate both first and second derivatives of this function.
+```{r deriv.too}
+g <- grad(map.too, balpha.hat)
+h <- hessian(map.too, balpha.hat)
+```
+
+And then we only keep the partial derivatives that occur in our formulae.
+```{r keep.various}
+dmu.db <- g[1]
+dmu.dalpha <- g[-1]
+d2mu.db.dalpha <- h[1, -1]
+```
+
+And then we give names to the estimators in our formulas.
+```{r mu.nu}
+mu.hat <- map.too(balpha.hat)
+nu.hat <- rout$nu["parental"]
+```
+
+And then we calculate the gradient vector of the FFTNS prediction with
+respect to the parameters of the model (fixed effects and variance
+components) using the formulae at the beginning of this section.
+```{r dfftns}
+dfftns <- c(- 4 * nu.hat * dmu.dalpha * dmu.db^2 / mu.hat^2 +
+    8 * nu.hat * d2mu.db.dalpha / mu.hat, 4 * dmu.db^2 / mu.hat, 0)
+```
+
+And apply the delta method.
+```{r delta.fftns}
+fftns.se <- t(dfftns) %*% fishinv %*% dfftns
+fftns.se <- sqrt(as.vector(fftns.se))
+fftns.se
+```
+
+### Additive Genetic Variance for Fitness
+
+The formulae here are a bit simpler than those in the preceding section.
+\begin{align*}
+   \frac{\partial V_A(W)}{\partial \alpha}
+   & =
+   8 \nu
+   \left( \frac{\partial^2 \mu}{\partial b \partial \alpha} \right)_{b = 0}
+   \\
+   \frac{\partial V_A(W)}{\partial \nu}
+   & =
+   4
+   \left[ \left( \frac{\partial \mu}{\partial b} \right)_{b = 0} \right]^2
+\end{align*}
+
+So we calculate the gradient vector $V_A(W)$ with
+respect to the parameters of the model
+using these formulae.
+```{r dvaw}
+dvaw <- c(8 * nu.hat * d2mu.db.dalpha, 4 * dmu.db^2, 0)
+```
+
+And then apply the delta method to get standard errors for this estimator.
+```{r delta.vaw}
+vaw.se <- t(dvaw) %*% fishinv %*% dvaw
+vaw.se <- sqrt(as.vector(vaw.se))
+vaw.se
+```
+
+### Mean Fitness
+
+Now the gradient vector of $\mu$ with respect to the parameters of the
+model is
+```{r dmf}
+dmf <- c(dmu.dalpha, 0, 0)
+```
+
+And then apply the delta method to get standard errors for this estimator.
+```{r delta.mf}
+mf.se <- t(dmf) %*% fishinv %*% dmf
+mf.se <- sqrt(as.vector(mf.se))
+mf.se
+```
+
+### Comment about Block Variance Component
+
+It might occur to one to ask where the sampling distribution
+of the variance component for blocks enters.  It does not appear in any
+of our formulas because none of the quantities we are estimating depends
+on it.  But we have not left it out of our calculation because the
+(approximate) Fisher information matrix is for *all* estimated parameters
+so its inverse `fishinv` gives the asymptotic joint distribution for *all*
+parameters, and this does correctly take into account the sampling
+variability in the variance component for blocks.
+
+### Comment about the Bootstrap
+
+This is not the way that @kulbaba-et-al did confidence intervals
+for these parameters.  They reported double parametric bootstrap $t$ confidence
+intervals, which are not symmetric (so they do not have the form
+$\text{mean} \pm 1.96 \cdot \text{standard error}$ as would be our intervals
+(if we did report intervals rather than just standard errors).  In that case,
+a double bootstrap was needed because the standard error
+formulas we derive here was not then available. It was thus necessary to conduct a single bootstrap to estimate
+standard errors, and then a bootstrap of the bootstrap (double bootstrap)
+to obtain confidence intervals.  Because the bootstrap is much more reliable
+than asymptotics, those intervals would have been better than the ones we give here, except
+for omitting the correction for subsampling.  Now, with the standard
+error formulas derived in this section available, one could do as well
+as possible with single parametric bootstrap $t$ confidence intervals.
+But we do not take the extra computing time to do that in this correction.
+
+## Standard Errors for All Subsets of the Data
+
+```{r std.err.redo, cache=TRUE, dependson=c("fit.save.one","fit.some.more","fit.even.more"), error=TRUE}
+sally <- function(rout) {
+<<map.too>>
+<<balpha.hat>>
+<<mu.nu>>
+<<deriv.too>>
+<<keep.various>>
+<<create.summary>>
+fishinv <- try(solve(sout$fisher), silent = TRUE)
+if (inherits(fishinv, "try-error"))
+    return(list(mf = NA, vaw = NA, fftns = NA))
+<<dfftns>>
+<<delta.fftns>>
+<<dvaw>>
+<<delta.vaw>>
+<<dmf>>
+<<delta.mf>>
+return(list(mf = mf.se, vaw = vaw.se, fftns = fftns.se))
+}
+
+save.se <- lapply(save.rout, sally)
+```
+
+So now we are ready to redo Table 3 in @kulbaba-et-al.
+```{r table}
+est <- unlist(save.fftns)
+est <- formatC(est, digits = 3, format = "f")
+se <- unlist(save.se)
+se <- formatC(se, digits = 3, format = "f")
+est.se <- paste0(est, " (", se, ")")
+est.se <- matrix(est.se, ncol = 3, byrow = TRUE)
+rownames(est.se) <- rep(2015:2017, times = 3)
+colnames(est.se) <- c("$\\overline{W}$", "$V_A(W)$",
+        "$V_A(W) / \\overline{W}$")
+
+kbl(est.se,
+    caption = "Estimates with Standard Errors (in parentheses)",
+    format = "latex", escape = FALSE, booktabs = TRUE) %>%
+    kable_styling() %>%
+    pack_rows("Grey Cloud Dunes", 1, 3) %>%
+    pack_rows("McCarthy Lake", 4, 6) %>%
+    pack_rows("CERA", 7, 9)
+```
+<!-- Do we want to use R function save_kable in R package kableExtra ??? -->
+
+In this table there are two rows in which we cannot calculate standard
+errors because the (approximate) Fisher information matrix is too close
+to being singular and hence cannot be inverted.
+
+Even if we could obtain finite standard errors with infinite
+precision arithmetic, they would be too large for computer arithmetic
+(which carries only 16 decimal places) to compute.  No matter what
+approximations or algorithms were used, these standard errors would be
+so large as to say that the estimates are very ill determined (could be
+arbitrarily far from the true unknown parameter values).
+
+For these two cases, of the nine, random effects aster models are 
+poorly behaved for these data. We note that the CERA plantings involved
+half as many individuals as those for the other two populations.
+
+# Plotting Breeding Values expressed in one year versus Breeding Values expressed in a second year
+
+This section is about reproducing Figure 3 in @kulbaba-et-al except with
+the correction for subsampling.
+
+First get all of the breeding values mapped to the canonical parameter
+scale.
+```{r save.e}
+andrew <- function(rout) {
+<<map>>
+<<sire.breeding>>
+<<fixnames>>
+return(mapv(b))
+}
+
+save.e <- lapply(save.rout, andrew)
+```
+
+Check that the names agree within site.
+```{r check.sire.names}
+identical(names(save.e$gc2015), names(save.e$gc2016))
+identical(names(save.e$gc2015), names(save.e$gc2017))
+identical(names(save.e$kw2015), names(save.e$kw2016))
+identical(names(save.e$kw2015), names(save.e$kw2017))
+identical(names(save.e$cs2015), names(save.e$cs2016))
+identical(names(save.e$cs2015), names(save.e$cs2017))
+```
+
+```{r plotit, fig.align="center", fig.cap="Comparing Breeding Values for Different Years, Same Site.", fig.height=8}
+par(mfrow = c(3,3))
+par(mar = c(5,4,0,0) + 0.1)
+plot(save.e$gc2015, save.e$gc2016, xlab = "GC 2015", ylab = "GC 2016")
+plot(save.e$gc2015, save.e$gc2017, xlab = "GC 2015", ylab = "GC 2017")
+plot(save.e$gc2016, save.e$gc2017, xlab = "GC 2016", ylab = "GC 2017")
+plot(save.e$kw2015, save.e$kw2016, xlab = "ML 2015", ylab = "ML 2016")
+plot(save.e$kw2015, save.e$kw2017, xlab = "ML 2015", ylab = "ML 2017")
+plot(save.e$kw2016, save.e$kw2017, xlab = "ML 2016", ylab = "ML 2017")
+plot(save.e$cs2015, save.e$cs2016, xlab = "CERA 2015", ylab = "CERA 2016")
+plot(save.e$cs2015, save.e$cs2017, xlab = "CERA 2015", ylab = "CERA 2017")
+plot(save.e$cs2016, save.e$cs2017, xlab = "CERA 2016", ylab = "CERA 2017")
+```
+
+# References
+
+<div id="refs"></div>
+
+# Appendix: Mean Values Corrected for Subsampling
+
+Here is the general algorithm for mean values corrected for subsampling,
+*not necessarily for a linear graph*, which was assumed in the main text.
+
+ 1. Get the matrix `xi` like in the code for R functions `map.factory`
+    and `map.factory.too`.
+
+ 1. (This is the correction for subsampling.)  Change all components
+    of `xi` for subsampling arrows to one (so multiplication by such
+    does nothing.  Something like
+```
+xi[ , is.subsampling] <- 1
+```
+
+ 3. Create a matrix `mu` the same dimensions as `xi`.
+
+ 3. Traverse the graph, predecessors before successors (the way R package
+    `aster` works, this is just in column order for `xi` and `mu`).
+    So something like
+```
+for (i in seq_along(pred)) {
+}
+
+```
+ 5. If `pred[i] == 0` so the predecessor is an initial node, set
+    this column of `mu` to be the corresponding column of `root`
+    (which needs to be gotten from `aout$root` in the setup).
+    Something like
+```
+mu[ , i] <- root[ , i]
+```
+
+  6. Otherwise
+```
+mu[ , i] <- mu[ , pred[i]] * xi[ , i]
+```
+
+Putting that all together (this code has not been tested, so we are not
+sure it works).
+
+Somewhere above `function (b) {`
+```
+root <- aout$root
+```
+
+Then delete the lines
+```
+xi <- xi[ , ! is.subsamp, drop = FALSE]
+mu <- apply(xi, 1, prod)
+```
+
+And replace with
+```
+xi[ , is.subsampling] <- 1
+mu <- xi * NaN
+for (i in seq_along(pred))
+    if (pred[i] == 0) {
+        mu[ , i] <- root[ , i]
+    } else {
+        mu[ , i] <- mu[ , pred[i]] * xi[ , i]
+    }
+```
+
+Now we have the unconditional mean values, corrected for subsampling for
+all nodes.
+
+Finally we need the sum of the means for all fitness nodes for an individual.
+Something like
+```
+ifit.matrix <- matrix(ifit, nrow = nrow(mu), ncol = ncol(mu))
+mu[! ifit.matrix] <- 0
+mu <- rowSums(mu)
+```
+
+And now `mu` is a vector, mean fitness for each individual in the data.
+
+And, in general (if there are covariates other than `varb` which we do
+not have in these data), you do not want to return `mu[1]` but rather
+the component or components of interesting individuals.
+
+And, in general, one might not want predicted mean fitness for an individual
+in the data but rather for a hypothetical individual whose covariate values
+differ from those of individuals in the data.  And that is what argument
+`newdata` to R function `predict` is for.  But we won't go into that here.
+
+# Appendix: Reaster Summaries
+
+Show model fits.
+```{r appendix, cache=TRUE, dependson=c("fit.save.one","fit.some.more","fit.even.more")}
+
+for (i in seq(along = save.rout)) {
+    cat("\n\n***************", names(save.rout)[i], "***************\n\n")
+    print(summary(save.rout[[i]]))
+}
+```
+
