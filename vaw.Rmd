@@ -7,7 +7,7 @@ author:
   - "Rachel E. Pain^[Ecology, Evolution and Behavior Graduate Program, University of Minnesota, repain@umn.edu]"
   - "Vincent M. Eckhart^[Department of Biology, Grinnell College, eckhart@grinnell.edu]"
   - "Ruth G. Shaw^[Department of Ecology, Evolution and Behavior, University of Minnesota, shawx016@umn.edu, https://orcid.org/0000-0001-5980-9291]"
-date: "`r format(Sys.time(), '%B %d, %Y')`"
+date: "August 19, 2022"
 output:
   bookdown::pdf_document2:
     extra_dependencies: "amscd"
@@ -92,6 +92,11 @@ for
 
 respectively.  For more details @kulbaba-et-al.
 
+These data files were downloaded from the GitHub repository
+https://github.com/mason-kulbaba/adaptive-capacity which
+contains the code and data for the analysis of the original paper.
+So we are using the same data but doing a different analysis.
+
 # Introduction
 
 We do aster (@aster2, @reaster) analyses for an aster model with graph
@@ -121,6 +126,10 @@ where the variables are
 
  * `totalseeds` is total number of seeds counted from collected pods,
    conditionally Poisson.
+
+As always with aster models, the name of the distribution for an arrow
+is the name of the conditional distribution of the successor variable
+given the predecessor variable.
 
 Set graphical model description in R.
 ```{r graph}
@@ -295,8 +304,9 @@ names(save.rout)
 
 # Fit More Models for Different Data
 
-Now that we have an analysis for one of the populations in a single year, we are ready to carry out the same analysis for the remaining cases to
-obtain results for all three populations in each of three years. we need to analyze the data in the following files.
+Now that we have an analysis for one of the populations,
+we are ready to carry out the same analyses for the other populations.
+We need to analyze the data in the following files.
 ```{r more.data}
 more.data <- c("kwdata.csv", "csdata.csv")
 ```
@@ -407,7 +417,7 @@ identical(pred, seq(along = pred) - 1)
 ```
 If we did not have a linear graph, then correction for subsampling would
 be much more complicated
-([appendix on that below](#appendix-mean-values-corrected-for-subsampling))
+([appendix on that below](#appendix-mean-values-corrected-for-subsampling)).
 
 Invoke the function to construct an R function `map` that maps from
 canonical to mean value parameter values for these data.
@@ -924,7 +934,6 @@ kbl(est.se,
     pack_rows("McCarthy Lake", 4, 6) %>%
     pack_rows("CERA", 7, 9)
 ```
-<!-- Do we want to use R function save_kable in R package kableExtra ??? -->
 
 In this table there are two rows in which we cannot calculate standard
 errors because the (approximate) Fisher information matrix is too close
@@ -999,7 +1008,7 @@ Here is the general algorithm for mean values corrected for subsampling,
     of `xi` for subsampling arrows to one (so multiplication by such
     does nothing.  Something like
 ```
-xi[ , is.subsampling] <- 1
+xi[ , is.subsamp] <- 1
 ```
 
  3. Create a matrix `mu` the same dimensions as `xi`.
@@ -1041,7 +1050,7 @@ mu <- apply(xi, 1, prod)
 
 And replace with
 ```
-xi[ , is.subsampling] <- 1
+xi[ , is.subsamp] <- 1
 mu <- xi * NaN
 for (i in seq_along(pred))
     if (pred[i] == 0) {
