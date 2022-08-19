@@ -21,9 +21,6 @@ csl: journal-of-the-royal-statistical-society.csl
 link-citations: true
 ---
 
-<!--
--->
-
 # Abstract
 
 In our paper, @kulbaba-et-al,
@@ -79,17 +76,21 @@ library("kableExtra")
 
 # Data
 
-Get data (if not done already).
-```{r down}
-prefix <- c("gc", "kw", "cs")
-for (p in prefix) {
-    f <- paste0(p, "data.csv")
-    u <- paste0("https://raw.githubusercontent.com/mason-kulbaba/",
-        "adaptive-capacity/master/VaW_W_analyses/", toupper(p), "/", f)
-    if (! file.exists(f))
-        download.file(u, f)
-}
+The data files are
 ```
+gcdata.csv
+kwdata.csv
+csdata.csv
+```
+for 
+
+ * Grey Cloud Dunes Scientific and Natural Area
+
+ * Kellogg-Weaver Dunes, also called McCarthy Lake, and
+
+ * Conard Environmental Research Area (CERA),
+
+respectively.  For more details @kulbaba-et-al.
 
 # Introduction
 
@@ -149,7 +150,7 @@ dat <- read.csv(mydata)
 
 ## Remove Parental ID Zero
 
-Parental ID Zero is apparently "unknown" and hence should be removed
+Parental ID Zero is "unknown" and hence should be removed
 from these analyses.
 ```{r remove}
 zeros <- dat$paternalID == 0 | dat$maternalID == 0
@@ -940,7 +941,7 @@ For these two cases, of the nine, random effects aster models are
 poorly behaved for these data. We note that the CERA plantings involved
 half as many individuals as those for the other two populations.
 
-# Plotting Breeding Values expressed in one year versus Breeding Values expressed in a second year
+# Breeding Values Expressed in One Year versus Breeding Values Expressed in Another
 
 This section is about reproducing Figure 3 in @kulbaba-et-al except with
 the correction for subsampling.
