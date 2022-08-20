@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/526613236.svg)](https://zenodo.org/badge/latestdoi/526613236)
+
 This git repo holds the files for the supplementary material for a
 correction to the paper
 
