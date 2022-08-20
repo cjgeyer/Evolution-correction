@@ -9,7 +9,11 @@ correction to the paper
 The correction has already been accepted by *Evolution* and has manuscript
 number 22-0427.
 
-Do
+The supplementary material is the PDF file
+[vaw.pdf](https://github.com/cjgeyer/Evolution-correction/blob/main/vaw.pdf)
+in this repo.
+
+This file is fully reproducible, to reproduce it download the repo and do
 
     Rscript -e 'rmarkdown::render("vaw.Rmd")'
 
