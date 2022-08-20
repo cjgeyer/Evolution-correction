@@ -1,0 +1,47 @@
+cff-version: 1.2.0
+message: "please cite as below"
+authors:
+  - family-names: Geyer
+    given-names: "Charles J."
+    orcid: https://orcid.org/0000-0003-1471-1703
+  - family-names: Kulbaba
+    given-names: "Mason W."
+    orcid: https://orcid.org/0000-0003-0619-7089
+  - family-names: Sheth
+    given-names: "Seema N."
+    orcid: https://orcid.org/0000-0001-8284-7608
+  - family-names: Pain
+    given-names: "Rachel E."
+  - family-names: Eckhart
+    given-names: "Vincent M."
+  - family-names: Shaw
+    given-names: "Ruth G."
+    orcid: https://orcid.org/0000-0001-5980-9291
+contact:
+  - affiliation: "School of Statistics, University of Minnesota"
+    email: geyer@umn.edu
+    family-names: Geyer
+    given-names: Charles
+  - affiliation: "Department of Mathematics and Science, Our Lady of the Lake University"
+    email: mkulbaba@ollusa.edu
+    family-names: Kulbaba
+    given-names: Mason
+  - affiliation: "Department of Plant and Microbial Biology, North Carolina State University"
+    email: ssheth3@ncsu.edu
+    family-names: Sheth
+    given-names: Seema
+  - affiliation: "Ecology, Evolution and Behavior Graduate Program, University of Minnesota"
+    email: repain@umn.edu
+    family-names: Pain
+    given-names: Rachel
+  - affiliation: "Department of Biology, Grinnell College"
+    email: eckhart@grinnell.edu
+    family-names: Eckhart
+    given-names: Vincent
+  - affiliation: "Department of Ecology, Evolution and Behavior, University of Minnesota"
+    email: shawx016@umn.edu
+    family-names: Shaw
+    given-names: Ruth
+title: "Correction for Kulbaba et al. (2019)"
+doi: 10.5281/zenodo.1234
+date-released: 2022-08-20

@@ -3,7 +3,7 @@ title: "Correction for @kulbaba-et-al"
 author:
   - "Charles J. Geyer^[School of Statistics, University of Minnesota, geyer@umn.edu, https://orcid.org/0000-0003-1471-1703]"
   - "Mason W. Kulbaba^[Department of Mathematics and Science, Our Lady of the Lake University, mkulbaba@ollusa.edu, https://orcid.org/0000-0003-0619-7089]"
-  - "Seema N. Sheth^[Department of Plant and Microbial Biology, North Carolina State University, https://orcid.org/0000-0001-8284-7608]"
+  - "Seema N. Sheth^[Department of Plant and Microbial Biology, North Carolina State University, ssheth3@ncsu.edu, https://orcid.org/0000-0001-8284-7608]"
   - "Rachel E. Pain^[Ecology, Evolution and Behavior Graduate Program, University of Minnesota, repain@umn.edu]"
   - "Vincent M. Eckhart^[Department of Biology, Grinnell College, eckhart@grinnell.edu]"
   - "Ruth G. Shaw^[Department of Ecology, Evolution and Behavior, University of Minnesota, shawx016@umn.edu, https://orcid.org/0000-0001-5980-9291]"
