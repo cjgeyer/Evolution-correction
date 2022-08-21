@@ -695,7 +695,7 @@ $$
 
  * $\mu$ is (predicted) mean fitness, what was `map(0)` before,
 
- * $b$ is the "breeding value (in scare quotes) on the canonical parameter
+ * $b$ is the "breeding value" (in scare quotes) on the canonical parameter
    scale, what was the argument of R function `map` before,
 
  * $\alpha$ is the vector of fixed effects (`rout$alpha`),
