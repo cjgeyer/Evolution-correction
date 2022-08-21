@@ -671,6 +671,7 @@ prediction (as we shall see, we cannot use R function `grad` for this).
    - 4 \mu^{-2} \frac{\partial \mu}{\partial \alpha} \nu 
    \left[ \left( \frac{\partial \mu}{\partial b} \right)_{b = 0} \right]^2
    + 8 \mu^{-1} \nu
+   \left( \frac{\partial \mu}{\partial b} \right)_{b = 0}
    \left( \frac{\partial^2 \mu}{\partial b \partial \alpha} \right)_{b = 0}
    \\
    \frac{\partial}{\partial \nu}
@@ -807,7 +808,7 @@ respect to the parameters of the model (fixed effects and variance
 components) using the formulae at the beginning of this section.
 ```{r dfftns}
 dfftns <- c(- 4 * nu.hat * dmu.dalpha * dmu.db^2 / mu.hat^2 +
-    8 * nu.hat * d2mu.db.dalpha / mu.hat, 4 * dmu.db^2 / mu.hat, 0)
+    8 * nu.hat * dmu.db * d2mu.db.dalpha / mu.hat, 4 * dmu.db^2 / mu.hat, 0)
 ```
 
 And apply the delta method.
@@ -824,6 +825,7 @@ The formulae here are a bit simpler than those in the preceding section.
    \frac{\partial V_A(W)}{\partial \alpha}
    & =
    8 \nu
+   \left( \frac{\partial \mu}{\partial b} \right)_{b = 0}
    \left( \frac{\partial^2 \mu}{\partial b \partial \alpha} \right)_{b = 0}
    \\
    \frac{\partial V_A(W)}{\partial \nu}
@@ -836,7 +838,7 @@ So we calculate the gradient vector $V_A(W)$ with
 respect to the parameters of the model
 using these formulae.
 ```{r dvaw}
-dvaw <- c(8 * nu.hat * d2mu.db.dalpha, 4 * dmu.db^2, 0)
+dvaw <- c(8 * nu.hat * dmu.db * d2mu.db.dalpha, 4 * dmu.db^2, 0)
 ```
 
 And then apply the delta method to get standard errors for this estimator.
@@ -991,6 +993,25 @@ plot(save.e$cs2015, save.e$cs2016, xlab = "CERA 2015", ylab = "CERA 2016")
 plot(save.e$cs2015, save.e$cs2017, xlab = "CERA 2015", ylab = "CERA 2017")
 plot(save.e$cs2016, save.e$cs2017, xlab = "CERA 2016", ylab = "CERA 2017")
 ```
+
+# Acknowledgments
+
+Anna Peschel discovered the error in @kulbaba-et-al — that estimates
+were not corrected for subsampling — which is corrected in this document.
+
+Frank Shaw found a calculus error in the formulas for
+$$
+   \frac{\partial}{\partial \alpha}
+   \frac{V_A(W)}{\mu}
+$$
+and
+$$
+   \frac{\partial V_A(W)}{\partial \alpha}
+$$
+in the first version of this correction uploaded to Zenodo
+(https://zenodo.org/).
+These have been fixed and the fixes reflected in the R code for
+`dfftns` and `dvaw`.
 
 # References
 
